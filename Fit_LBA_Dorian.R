@@ -35,22 +35,124 @@ p.map <- list(A="1",B=c("Coh","Angle"),t0="1",mean_v=c("M"),sd_v="M",st0="1")
 model1 <- model.dmc(p.map,match.map = match.map,constants=const,
                    responses=responses,factors=factors)
 
-p.vector  <- c(A=0.5, B.cohE.angleE = 3, B.cohE.angleH = 4, B.cohH.angleE = 5, B.cohH.angleH = 6,t0=.2,
-               mean_v.true=2,mean_v.false=-1,sd_v.true=0.5)
 
-check.p.vector(p.vector,model1)
-print.cell.p(p.vector,model1)
+# Define the prior distributions -----------------------------------------------------------------
+
+vec_p <- function(param,factor1 = 1,factor2 = 1, value,plower,pupper)
+{
+  if(!factor1 & !factor2){
+  lbls <- param  
+  }
+  else if(factor1 & !factor2) {
+  lbls <- do.call(paste, c(expand.grid(param, c("cohE","cohH")), list(sep='.')))}
+  
+  else if (!factor1 & factor2) {
+  lbls <- do.call(paste, c(expand.grid(param,  c("angleE","angleH")), list(sep='.')))
+  }
+  else{
+   lbls<- do.call(paste, c(expand.grid(param, c("cohE","cohH"), c("angleE","angleH")), list(sep='.')))
+    
+  }
+  
+  parv <- rep(value,length(lbls))
+  names(parv) <- lbls
+  plow <- rep(plower,length(parv))
+  phigh <- rep(pupper,length(parv))
+
+  vec <- list("parv"=parv,"lower"=plow,"upper"=phigh)
+  return(vec)
+  
+}
+
+vec_pV <- function(param,factor1 = 1,factor2 = 1, value_true,value_false,plower,pupper)
+{  
+  true_false <- c("true","false")
+  if(!factor1 & !factor2){
+    lbls <- do.call(paste, c(expand.grid(param,true_false),list(sep ='.')))  
+  }
+  else if(factor1 & !factor2) {
+    lbls <- do.call(paste, c(expand.grid(param, c("cohE","cohH"),true_false), list(sep='.')))
+  }
+  else if (!factor1 & factor2) {
+    lbls <- do.call(paste, c(expand.grid(param,  c("angleE","angleH"),true_false), list(sep='.')))
+  }
+  else{
+    lbls<- do.call(paste, c(expand.grid(param, c("cohE","cohH"), c("angleE","angleH"),true_false), list(sep='.')))
+    
+  }
+  
+  parv <- c(rep(value_true,length(lbls)/2),rep(value_false,length(lbls)/2))
+  names(parv) <- lbls
+  
+  
+  plow <- rep(plower,length(parv))
+  phigh <- rep(pupper,length(parv))
+  
+  vec <- list("parv"=parv,"lower"=plow,"upper"=phigh)
+  return(vec)
+  
+}
+
+comp_vec <- function(vA,vB,vV,vsd,vt0) {
+  pars<-c(vA$parv,vB$parv,vV$parv,vsd$parv,vt0$parv)
+  upper<-c(vA$upper,vB$upper,vV$upper,vsd$upper,vt0$upper)
+  lower<-c(vA$lower,vB$lower,vV$lower,vsd$lower,vt0$lower)
+  comp <- list("pars" = pars,"upper"=upper,"lower"=lower)
+  return(comp)
+}
+
+pop_prior <- comp_vec(
+  vec_p('A',0,0, .4,0,NA),
+  vec_p('B',1,1, .8,0,NA),
+ vec_pV('mean_v',0,0, 1,0,NA,NA),
+  vec_p('sd_v.true',0,0, .1,0,NA),
+  vec_p('t0',0,0, .4,.1,1))
+
+pop_scale <- comp_vec(
+  vec_p('A',0,0, .1,0,NA),
+  vec_p('B',1,1, .1,0,NA),
+  vec_pV('mean_v',0,0, .2,0,NA,NA),
+  vec_p('sd_v.true',0,0, .1,0,NA),
+  vec_p('t0',0,0, .05,.1,1))
 
 
-# Load and preprocess the data ------------------
+# pop.mean <- c(A=.4, B.r1=.8, B.r2=.8, 
+#               mean_v.f1.true=1.5, mean_v.f2.true=1, mean_v.f1.false=0, mean_v.f2.false=0, 
+#               sd_v.true = .25,  t0=.3)
+# pop.scale <-c(A=.1, B.r1=.1, B.r2=.1, 
+#               mean_v.f1.true=.2, mean_v.f2.true=.2, mean_v.f1.false=.2, mean_v.f2.false=.2, 
+#               sd_v.true = .1, t0=.05)  
+# 
+# p.prior <- prior.p.dmc(
+#   dists = rep("tnorm",9),
+#   p1=pop.mean,p2=pop.scale,
+#   lower=c(0,0,0,0,0,NA,NA,0,.1),upper=c(NA,NA,NA,NA,NA,NA,NA,NA,1))
 
-#data <- R.matlab::readMat(here::here('Data','lba_test_data.mat'))
+#double check that parameters match with model
+pop.mean <- pop_prior$pars
+check.p.vector(pop.mean,model1)
+pop.scale <- pop_scale$pars
+check.p.vector(pop.scale,model1)
+
+nparams = length(pop.mean)
+paramnames = names(pop.mean)
+
+p.prior <- prior.p.dmc(dists = rep("tnorm",nparams),
+                       p1=pop.mean,p2=pop.scale,
+                       lower = pop_prior$lower,
+                       upper = pop_prior$upper)
+
+
+
+
+# Load and preprocess the data -------------------------------------------------------------------
+# this probably needs to be changed 
+
 data <- read.csv("AccrateRT.csv") %>% as.data.frame()
 
 
 data <- simulate.dmc(p.vector,model1,n=1) 
 
-# this needs to be changed 
 # get indices of  correct  trials and remove implausible RTs
 data <- data %>% mutate(Correct = ifelse((S=="s1" & R == "r1") | (S=="s2" & R == "r2"),"Correct","Wrong"))  %>%
         mutate(Plausibility = case_when(
@@ -59,7 +161,7 @@ data <- data %>% mutate(Correct = ifelse((S=="s1" & R == "r1") | (S=="s2" & R ==
                          TRUE ~ "Good")) %>%
         filter(Plausibility == "Good",.preserve = TRUE)
 
-# remove outlier RTs (mean ± 2.5sd) on subject-by-subject basis
+# remove outlier RTs (mean ± 2.5sd) on  a subject-by-subject basis
 data <- data %>% group_by(s) %>% mutate(Plausibility = case_when(
   
   Correct == "Correct" & RT < (mean(RT)-2*sd(RT)) ~ "Outlier",
@@ -81,7 +183,7 @@ data <- data %>% mutate( s = as.factor(s),
 data.model <- data.model.dmc(data, model)
 
 
-# Fit the model non-hierarchically (i.e. treating subjects as fixed effects) ------
+# Fit the model non-hierarchically (i.e. treating subjects as fixed effects) ---------------------
 # number of cores available
 mycores <- 4
 
@@ -101,117 +203,72 @@ save(sampling_LBA, file =  "sampling_LBA.RData")
 
 
 
+# Fit the model hierarchically (treating subjects as a random effect) -----------------------------
 
+# We will use the results of the non-hierarchical modelling to generate starting points for the
+# hierarchical modelling
+groupstart <- make.hstart(sampling_LBA) # group-level parameters
+subjectstart <- make.theta1(sampling_LBA) # subject-level parameters
 
-# Each subject can be thought of as a random effect. That is, rather than 
-# thinking of each subject as being completely unrelated to all other subjects
-# we treat them as coming from the same population. In practice this means that
-# each subject's parameters are from a population distribution.
+# If we perform hierarchical modelling, we assume that each parameter has a group-level
+# distribution with some location (e.g. mean) and scale (e.g. SD). These group-level distributions
+# then serve as priors for our parameters at the level of individual subjects.
+# Thus, we need to define prior distributions for both the group-level mean and the group-level SD
+# of each parameter. These are also known as hyperpriors.
 
-# This can be done with the "p.prior" (parameter prior) argument to 
-# h.simulate.dmc where the prior.p.dmc function defines 
-# distributions from which parameters can be sampled. We will use the default 
-# distribution (normal), requiring a mean (p1) and standard deviation (p2) 
-# parameter. Here we use p.vector to give the means and the same sd for 
-# all parameters (a vector for p2 allows different sds for each parameter).
+# For the prior distributions for the location (i.e. mean) of our group-level distributions, we
+# will simply recycle the priors we used for the fixed-effects modelling
+mu.prior <- p.prior
 
-pop.mean <- c(A=0.5, B.cohE.angleE = 3, B.cohE.angleH = 4, B.cohH.angleE = 5, B.cohH.angleH = 6,
-              mean_v.true=2,mean_v.false=-1,sd_v.true=0.5, t0=.2)
-pop.scale <-c(A=.1, B.cohE.angleE = .1, B.cohE.angleH = .1, B.cohH.angleE = .1, B.cohH.angleH = .1,
-              mean_v.true=.2,mean_v.false=.2,sd_v.true=0.1,t0=.05)
-
-pop.prior <- prior.p.dmc(
-  dists = rep("tnorm",9),
-  p1=pop.mean,p2=pop.scale,
-  lower=c(0,0,0,0,0,NA,NA,0,.1),upper=c(NA,NA,NA,NA,NA,NA,NA,NA,1)
-)
-
-##  Check population distributions
-par(mfcol=c(2,5)); for (i in names(pop.prior)) plot.prior(i,pop.prior)
-
-
-# Simulate some data: ns subjects, with n data point per design cell
-raw.data1 <- h.simulate.dmc(model1, p.prior = pop.prior, n = 250, ns = 40)
-data.model1 <- data.model.dmc(raw.data1, model1)
-
-# Take a look at the first  subject's data
-par(mfcol=c(4,2)) 
-for (i in 1) { # First column=response left, Second column = response right. Rows = EasyCoh-EasyAngle, EasyCoh-HardAngle,HardCoh-EasyAngle, hard-hard
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohE" & data.model1[[i]]$Angle=="angleE" & data.model1[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohE" & data.model1[[i]]$Angle=="angleH" & data.model1[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohH" & data.model1[[i]]$Angle=="angleE" & data.model1[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohH" & data.model1[[i]]$Angle=="angleH" & data.model1[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohE" & data.model1[[i]]$Angle=="angleE" & data.model1[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohE" & data.model1[[i]]$Angle=="angleH" & data.model1[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohH" & data.model1[[i]]$Angle=="angleE" & data.model1[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model1[[i]][data.model1[[i]]$Coh=="cohH" & data.model1[[i]]$Angle=="angleH" & data.model1[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  
-}  
-
-# Take a look at parameters
-ps <- round( attr(raw.data1, "parameters"), 2)
-round(apply(ps,2,mean),2)
-
-
-# accumulation rate  changes with manipulations and correct responses
-p.map <- list(A="1",B= "1",t0="1",mean_v=c("Coh","Angle","M"),sd_v="M",st0="1")
-
-model2 <- model.dmc(p.map,match.map = match.map,constants=const,
-                    responses=responses,factors=factors)
-
-p.vector  <- c(A=0.5, B = 3,  mean_v.cohE.angleE.true = 3, mean_v.cohE.angleH.true = 2.5, mean_v.cohH.angleE.true = 2.5, mean_v.cohH.angleH.true = 2,
-               mean_v.cohE.angleE.false = 0, mean_v.cohE.angleH.false = 0, mean_v.cohH.angleE.false = 0, mean_v.cohH.angleH.false = 0,t0=.2,
-               sd_v.true=0.5)
-
-check.p.vector(p.vector,model2)
-print.cell.p(p.vector,model1)
-
-
-# Population distribution, Coherence and Angle effect on accumulation rate
-pop.mean <- c(A=0.5, B = 3,  mean_v.cohE.angleE.true = 3, mean_v.cohE.angleH.true = 2.5, mean_v.cohH.angleE.true = 2.5, mean_v.cohH.angleH.true = 2,
-              mean_v.cohE.angleE.false = 0, mean_v.cohE.angleH.false = 0, mean_v.cohH.angleE.false = 0, mean_v.cohH.angleH.false = 0,t0=.2,
-              sd_v.true=0.5)
-pop.scale <-c(A=.1, B = .1,  mean_v.cohE.angleE.true = .2, mean_v.cohE.angleH.true = .2, mean_v.cohH.angleE.true = .2, mean_v.cohH.angleH.true = .2,
-  mean_v.cohE.angleE.false = .2, mean_v.cohE.angleH.false = .2, mean_v.cohH.angleE.false = .2, mean_v.cohH.angleH.false = .2, sd_v.true=0.1, t0=.05
+# What's new with hierarchical modelling is we also have to define prior distributions for the
+# scale (i.e. SD) of our group-level distributions
+sigma.prior <- prior.p.dmc(
+  # set the type of distribution: Gamma distribution for all parameters
+  dists = rep(x = "gamma", times = nparams),
+  # set the shape parameter (p1) of the distribution: Shape = 1, hence exponential distribution
+  p1 = c(
+    setNames(
+      object = rep(x = 1, times = nparams),
+      nm = paramnames
+    )
+  ),
+  # set the scale parameter (p2) of the distribution
+  p2 = c(
+    setNames(
+      object = rep(x = 1, times = nparams),
+      nm = paramnames
+    )
   )
-
-check.p.vector(pop.mean,model2)
-check.p.vector(pop.scale,model2)
-
-
-
-pop.prior <- prior.p.dmc(
-  dists = rep("tnorm",12),
-  p1=pop.mean,p2=pop.scale,
-  lower=c(0,0,NA,NA,NA,NA,NA,NA,NA,NA,0,.1),upper=c(NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,1)
 )
 
-##  Check population distributions
-par(mfcol=c(2,6)); for (i in names(pop.prior)) plot.prior(i,pop.prior)
+# Lastly, we combine these into a hyper-prior list
+pp.prior <- list(mu.prior, sigma.prior)
 
+# Set up our model fitting object
+hsampling_LBA <- h.samples.dmc(
+  nmc = 400, # number of samples AFTER thinning
+  pp.prior = pp.prior, # hyper-priors
+  p.prior = mu.prior, # prior for each subject
+  hstart.prior = groupstart,
+  theta1 = subjectstart,
+  thin = 10, # thinning to deal with autocorrelation
+  data = data.model # note: Default number of chains is 3 * nparams
+)
 
-# Simulate some data
-raw.data2 <- h.simulate.dmc(model2, p.prior = pop.prior, n = 250, ns = 40)
-data.model2 <- data.model.dmc(raw.data2, model2)
+# Now we run the models using some automated functions from the DMC toolbox
+hsampling_LBA <- h.run.unstuck.dmc(
+  samples = hsampling_LBA, cores = mycores, report = 10,
+  p.migrate = 0.05, h.p.migrate = 0.05)
+hsampling_LAB <- h.run.converge.dmc(
+  samples = h.samples.dmc(samples = hsampling_LBA, nmc = 120, thin = 25),
+  nmc = 40, cores = mycores, report = 10, verbose = TRUE)
 
-# Take a look at the first  subject's data
-par(mfcol=c(4,2)) 
-for (i in 1) { # First column=response left, Second column = response right. Rows = EasyCoh-EasyAngle, EasyCoh-HardAngle,HardCoh-EasyAngle, hard-hard
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohE" & data.model2[[i]]$Angle=="angleE" & data.model2[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohE" & data.model2[[i]]$Angle=="angleH" & data.model2[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohH" & data.model2[[i]]$Angle=="angleE" & data.model2[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohH" & data.model2[[i]]$Angle=="angleH" & data.model2[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohE" & data.model2[[i]]$Angle=="angleE" & data.model2[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohE" & data.model2[[i]]$Angle=="angleH" & data.model2[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohH" & data.model2[[i]]$Angle=="angleE" & data.model2[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohH" & data.model2[[i]]$Angle=="angleH" & data.model2[[i]]$S=="s2",],C="r2",xlim=c(1,6),show.mean = TRUE)
-  
-}  
+# after the model has converged, get some "clean" samples to be used for parameter estimation
+hsampling_LBA <- h.run.dmc(
+  h.samples.dmc(samples = hsampling_LBA, nmc = 500),
+  report = 1, cores = mycores)
+hsampling_CamCAN <- h.run.dmc(
+  h.samples.dmc(samples = hsampling_LBA, nmc = 500),
+  report = 1, cores = mycores)
 
-# Take a look at parameters
-ps <- round( attr(raw.data2, "parameters"), 2)
-round(apply(ps,2,mean),2)
-
-
-
+save(hsampling_LBA, file = "hsampling_LBA.RData")
