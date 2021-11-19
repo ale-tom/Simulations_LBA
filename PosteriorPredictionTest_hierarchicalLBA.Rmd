@@ -80,7 +80,7 @@ pop.prior <- prior.p.dmc(
 par(mfcol=c(2,5)); for (i in names(pop.prior)) plot.prior(i,pop.prior)
 ```
 
-Simulate data: 15m subjects (ns), with 320 data point (n) per design cell
+Simulate data: 10 subjects (ns), with 320 data point (n) per design cell
 
 ```{r}
 raw.data1 <- h.simulate.dmc(model1, p.prior = pop.prior, n = 320, ns = 10)
