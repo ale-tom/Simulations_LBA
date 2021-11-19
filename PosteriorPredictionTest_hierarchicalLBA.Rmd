@@ -266,8 +266,12 @@ data.model <- data.model.dmc(data, model1)
 ## 3 - Fit the model non-hierarchically (i.e. treating subjects as fixed effects)
 
 ```{r}
-# number of cores available
-mycores <- 4
+
+fitmodel = 0
+if(fit_model){
+
+  # number of cores available
+  mycores <- 4
 
 # First we set  up our model fitting object
 sampling_LBA <- h.samples.dmc(
@@ -282,6 +286,8 @@ sampling_LBA <- h.RUN.dmc(sampling_LBA, cores = mycores, verbose = TRUE)
 
 # Save this sampling object
 save(sampling_LBA, file =  "sampling_LBA.RData")
+}
+else { load(sampling_LBA)}
 ```
 
 Plot data from a subject:
@@ -299,4 +305,63 @@ for (i in 1) { # First column=response left, Second column = response right. Row
   plot.cell.density(data.cell=data.model2[[i]][data.model2[[i]]$Coh=="cohH" & data.model2[[i]]$Angle=="angleH" & data.model2[[i]]$S=="s1",],C="r1",xlim=c(1,6),show.mean = TRUE)
   
 }  
+```
+
+## 4 - Diagnostics
+
+Check convergence of chains using Gelman's rhat and visualise chains for inspection
+
+```{r message=FALSE, warning=FALSE}
+
+# check convergence for each chain (rhat)
+gelman.diag.dmc(sampling_LBA)
+
+# all chains converged well
+#   1    6    8   10    2    3    7    5    9    4 
+#1.01 1.01 1.01 1.01 1.01 1.01 1.01 1.01 1.01 1.01 
+#Mean
+#[1] 1.01
+
+# visual inspection of chains
+for (i in 1:1) {
+  plot.dmc(sampling_LBA,density=FALSE,smooth=FALSE,subject=i,layout=c(2,5))
+  #  Sys.sleep(0.1) 
+}
+```
+
+Calculate the effective sample size after thinning (i.e. after removing autocorrelation)
+
+```{r}
+# Effective sample size is fine .
+es <- effectiveSize.dmc(sampling_LBA)
+round(apply(data.frame(es),1,mean))  %>%
+  kableExtra::kbl() %>%
+  kableExtra::kable_classic()
+```
+
+Use get.thin to look at mean and minimum effective sample sizes and an estimate of what thinning might be needed to remove all autocorrelation as actual n divided by either minimum or mean effective n.
+
+```{r}
+get.thin(sampling_LBA)
+
+# Thinning and sample size are appropriate
+# Minimum Effective Size
+#    1    2    3    4    5    6    7    8    9   10 
+# 4076 4292 4120 4389 4274 4126 4339 4128 4404 4308 
+# Mean Effective Size
+#    1    2    3    4    5    6    7    8    9   10 
+# 4377 4399 4258 4517 4448 4389 4526 4420 4561 4600 
+# Thin
+#      1 2 3 4 5 6 7 8 9 10
+# mean 2 2 3 2 2 2 2 2 2  2
+# min  3 3 3 2 3 3 3 3 2  3
+```
+
+## 5 - Check parameter recovery
+
+Model recovered parameters nicely
+
+```{r}
+h.check.recovery.dmc(sampling_LBA,ps)
+
 ```
