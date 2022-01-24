@@ -54,6 +54,7 @@ data <- data %>% mutate( s = as.factor(s),
                          Angle = as.factor(Angle),
                          R = as.factor(R))
 
+#note i is the index for the model variant (total number of variants is 34)
 LBAFit <- function(i,data) {
   # Set your working directory to the DMC folder  to load the model
   wd <- here::here();
@@ -316,6 +317,7 @@ LBAFit <- function(i,data) {
 }
 
 #submit jobs to cluster
+# here I test only the first 5 variants 
 job <- Slurm_lapply(c(1:5), LBAFit, data = data, njobs=5, mc.cores=10, plan = "collect")
 #check jobs exit status 
 status(job)
